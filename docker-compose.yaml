@@ -1,0 +1,27 @@
+version: '3.6'
+x-defaults: &defaults
+  env_file: .env
+  # restart: unless-stopped
+  logging:
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  linode-slackbot:
+    <<: *defaults
+    image: chrisdlangton/linode-slackbot
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    environment:
+      - LINODE_TOKEN=${LINODE_TOKEN}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+    volumes:
+      - ./src/main.py:/srv/app/main.py
+      - db:/srv/app/sqlite
+
+volumes:
+  db:
+    external: true
+    name: linode-slack-db
