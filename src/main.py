@@ -4,7 +4,7 @@ https://api.slack.com/incoming-webhooks
 Set the webhook_url to the one provided by Slack when you create the webhook at https://my.slack.com/services/new/incoming-webhook/
 '''
 import json
-from os import getenv
+from os import getenv, stat
 from pprint import pprint
 from urllib.parse import urlencode
 import sqlite3
@@ -86,52 +86,49 @@ def linode_event_to_row(data: dict) -> tuple:
         data.get('message', '')
     )
 
-def mkfmt(wide :int) -> str:
-    return '{:<'+str(wide)+'}'
-
-def linode_event_to_table(data: dict, wide :int = 50) -> str:
-    right_fmt = '{:>}'
-    text = ''
-
-    pk :int = data.get('id')
+def linode_event_to_table(data: dict) -> str:
+    text :str = ''
+    pk :str = str(data.get('id'))
     action :str = data.get('action')
     created :str = data.get('created')
     status :str = data.get('status')
     username :str = data.get('username')
     message :str = data.get('message', '')
     entity :dict = data.get('entity')
-
-    text += mkfmt(wide+2).format('*Action:*') + right_fmt.format('*When:*') + "\n"
-    text += mkfmt(wide).format(action.strip()) + right_fmt.format(created.strip()) + "\n"
-    text += mkfmt(wide+2).format('*Status:*') + right_fmt.format('*ID:*') + "\n"
-    # Status: failed finished notification scheduled started
-    if status == 'finished':
-        status = f':white_check_mark: Finished'
-        text += mkfmt(wide+14).format(status) + right_fmt.format(pk) + "\n"
-    if status == 'notification':
-        status = f':warning: Notification'
-        text += mkfmt(wide+5).format(status) + right_fmt.format(pk) + "\n"
-
-    text += mkfmt(wide+2).format('*Username:*') + right_fmt.format('*Message:*') + "\n"
-    text += mkfmt(wide).format(username.strip()) + right_fmt.format(message.strip()) + "\n"
-    labels = ()
-    values = ()
+    label :str = ''
+    _type :str = ''
     if entity is not None:
         if entity.get('type'):
-            labels = ('*Type:*', '')
-            values = (entity.get('type'), '')
+            _type = entity.get('type')
         if entity.get('label'):
-            labels = ('*Type:*', '*Label:*')
-            values = (entity.get('type'), entity.get('label'))
-    if labels:
-        left, right = labels
-        text += mkfmt(wide+2).format(left) + right_fmt.format(right) + "\n"
-    if values:
-        left, right = values
-        text += mkfmt(wide).format(left) + right_fmt.format(right) + "\n"
+            label = entity.get('label')
+    wide :int = len(max([pk, action, created, status, username, message, _type, label, '     Finished', '     Failed', '     Notification'], key=len))+20
+    text += '*Action:*'.ljust(wide-4, ' ') + '*When:*'.ljust(wide, ' ') + "\n"
+    text += action.ljust(wide-len(action), ' ') + created.ljust(wide, ' ') + "\n"
+    text += '*Status:*'.ljust(wide-3, ' ') + '*ID:*'.ljust(wide, ' ') + "\n"
+    # Status: failed finished notification scheduled started
+    if status == 'started':
+        status = f':checkered_flag: Started'
+        text += status.ljust(wide+4, ' ') + pk.ljust(wide, ' ') + "\n"
+    if status == 'failed':
+        status = f':no_entry: Failed'
+        text += status.ljust(wide, ' ') + pk.ljust(wide, ' ') + "\n"
+    if status == 'finished':
+        status = f':white_check_mark: Finished'
+        text += status.ljust(wide+5, ' ') + pk.ljust(wide, ' ') + "\n"
+    if status == 'scheduled':
+        status = f':watch: Scheduled'
+        text += status.ljust(wide-8, ' ') + pk.ljust(wide, ' ') + "\n"
+    if status == 'notification':
+        status = f':warning: Notification'
+        text += status.ljust(wide-6, ' ') + pk.ljust(wide, ' ') + "\n"
+    text += '*Username:*'.ljust(wide-8, ' ') + '*Message:*'.ljust(wide, ' ') + "\n"
+    text += username.ljust(wide-len(username), ' ') + message.ljust(wide, ' ') + "\n\n"
+    if label or _type:
+        text += '*Label:*'.ljust(wide-4, ' ') + '*Type:*'.ljust(wide, ' ') + "\n"
+        text += label.ljust(wide-len(label), ' ') + _type.ljust(wide, ' ') + "\n"
 
     return text
-
 
 def main():
     conn = get_connection()
@@ -142,7 +139,9 @@ def main():
         if row is None:
             cursor.execute(f"INSERT INTO {TABLENAME} VALUES (?,?,?,?,?,?,?,?)", linode_event_to_row(result))
             conn.commit()
+        else:
             post_to_slack(linode_event_to_table(result))
+            break
 
     conn.close()
 
