@@ -183,9 +183,7 @@ def main():
         if row is None:
             cursor.execute(f"INSERT INTO {TABLENAME} VALUES (?,?,?,?,?,?,?,?)", linode_event_to_row(result))
             conn.commit()
-        else:
             parse_linode_event(result)
-            break
 
     conn.close()
 
