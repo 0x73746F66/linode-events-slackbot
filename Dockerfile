@@ -1,18 +1,22 @@
 FROM docker.io/library/alpine:3.8
+LABEL org.opencontainers.image.authors="Christopher Langton"
+LABEL org.opencontainers.image.version="1.0.0"
+LABEL org.opencontainers.image.source="https://gitlab.com/chrislangton/linode-events-slackbot"
+
 ENV PYTHONUNBUFFERED 1
 ENV PYTHONPATH /srv/app
+
 WORKDIR /srv/app
+
+COPY bin/entrypoint /entrypoint
+RUN mkdir -p sqlite && \
+        apk update -q && \
+        apk -q --no-cache add python3 build-base linux-headers python3-dev sqlite && \
+        python3 -m pip install -q --no-cache-dir --no-warn-script-location -U pip
+
 COPY src .
 COPY requirements.txt requirements.txt
 
-RUN mkdir -p sqlite && \
-        adduser -HDS -u 1000 -h /srv/app app && \
-        apk update -q && \
-        apk -q --no-cache add python3 build-base linux-headers python3-dev sqlite && \
-        python3 -m pip install -q --no-cache-dir --no-warn-script-location -U pip && \
-        chown -R app: /srv/app 
-
-USER app
 RUN pip install -q --user -r requirements.txt
-
-CMD ["python3", "main.py"]
+ENTRYPOINT ["/entrypoint"]
+CMD ["/usr/bin/python3", "/srv/app/main.py"]

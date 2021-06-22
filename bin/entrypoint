@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+
+echo "Docker container has been started"
+
+echo "* * * * * $@ >> /srv/app/cron.log 2>&1
+" > /srv/app/scheduler
+
+crontab /srv/app/scheduler
+crond -f -l 8

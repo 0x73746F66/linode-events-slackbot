@@ -41,3 +41,7 @@ down: ## Bring down all running containers
 	@docker-compose down --remove-orphans
 
 restart: down up ## alias for down && up
+
+push: ## Push to dockerhub
+	@echo ${DOCKERHUB_TOKEN} | docker login --password-stdin -u ${DOCKERHUB_USER}
+	docker-compose push linode-slackbot
