@@ -61,12 +61,40 @@ def query_linode(uri :str, version :str = '/v4', hostname :str = 'api.linode.com
 
     return resp_json.get('data', [])
 
-def post_to_slack(message):
+def post_to_slack(fields :list, header :str, button_text :str, button_url :str):
     if proxy_url is None:
         http = urllib3.PoolManager(strict=True)
     else:
         http = urllib3.ProxyManager(proxy_url, cert_reqs='CERT_REQUIRED', ca_certs=certifi.where())
-    encoded_data = json.dumps({'text': message}).encode('utf-8')
+
+    blocks :list = [
+        {
+            'type': 'header',
+            'text': {
+                'type': 'plain_text',
+                'text': header,
+            }
+        }, {
+            'type': 'divider'
+        }, {
+            'type': 'section',
+            'fields': fields
+        }, {
+            'type': 'actions',
+            'elements': [
+                {
+                    'type': 'button',
+                    "style": "primary",
+                    'text': {
+                        'type': 'plain_text',
+                        'text': button_text
+                    },
+                    'url': button_url
+                }
+            ]
+        }
+    ]
+    encoded_data = json.dumps({ 'blocks': blocks }).encode('utf-8')
     response = http.request("POST", webhook_url, body=encoded_data, headers={'Content-Type': 'application/json'})
     if response.status != 200:
         raise ValueError(
@@ -86,49 +114,65 @@ def linode_event_to_row(data: dict) -> tuple:
         data.get('message', '')
     )
 
-def linode_event_to_table(data: dict) -> str:
-    text :str = ''
-    pk :str = str(data.get('id'))
-    action :str = data.get('action')
-    created :str = data.get('created')
-    status :str = data.get('status')
-    username :str = data.get('username')
-    message :str = data.get('message', '')
-    entity :dict = data.get('entity')
-    label :str = ''
-    _type :str = ''
+def parse_linode_event(data: dict) -> str:
+    pk :str             = str(data.get('id'))
+    action :str         = data.get('action')
+    created :str        = data.get('created')
+    status :str         = data.get('status')
+    username :str       = data.get('username')
+    message :str        = data.get('message', '')
+    entity :dict        = data.get('entity')
+    label :str          = ''
+    resource_type :str  = ''
+    resource_id :str    = ''
+    header :str         = ''
+    button_url :str     = 'https://cloud.linode.com/'
+    button_text :str    = 'Launch Console'
+
+    if status == 'started':
+        header = f':checkered_flag: Started'
+    if status == 'failed':
+        header = f':no_entry: Failed'
+    if status == 'finished':
+        header = f':white_check_mark: Finished'
+    if status == 'scheduled':
+        header = f':watch: Scheduled'
+    if status == 'notification':
+        header = f':warning: Notification'
+
     if entity is not None:
+        if entity.get('id'):
+            resource_id = entity.get('id')
         if entity.get('type'):
-            _type = entity.get('type')
+            resource_type = entity.get('type')
         if entity.get('label'):
             label = entity.get('label')
-    wide :int = len(max([pk, action, created, status, username, message, _type, label, '     Finished', '     Failed', '     Notification'], key=len))+20
-    text += '*Action:*'.ljust(wide-4, ' ') + '*When:*'.ljust(wide, ' ') + "\n"
-    text += action.ljust(wide-len(action), ' ') + created.ljust(wide, ' ') + "\n"
-    text += '*Status:*'.ljust(wide-3, ' ') + '*ID:*'.ljust(wide, ' ') + "\n"
-    # Status: failed finished notification scheduled started
-    if status == 'started':
-        status = f':checkered_flag: Started'
-        text += status.ljust(wide+4, ' ') + pk.ljust(wide, ' ') + "\n"
-    if status == 'failed':
-        status = f':no_entry: Failed'
-        text += status.ljust(wide, ' ') + pk.ljust(wide, ' ') + "\n"
-    if status == 'finished':
-        status = f':white_check_mark: Finished'
-        text += status.ljust(wide+5, ' ') + pk.ljust(wide, ' ') + "\n"
-    if status == 'scheduled':
-        status = f':watch: Scheduled'
-        text += status.ljust(wide-8, ' ') + pk.ljust(wide, ' ') + "\n"
-    if status == 'notification':
-        status = f':warning: Notification'
-        text += status.ljust(wide-6, ' ') + pk.ljust(wide, ' ') + "\n"
-    text += '*Username:*'.ljust(wide-8, ' ') + '*Message:*'.ljust(wide, ' ') + "\n"
-    text += username.ljust(wide-len(username), ' ') + message.ljust(wide, ' ') + "\n\n"
-    if label or _type:
-        text += '*Label:*'.ljust(wide-4, ' ') + '*Type:*'.ljust(wide, ' ') + "\n"
-        text += label.ljust(wide-len(label), ' ') + _type.ljust(wide, ' ') + "\n"
 
-    return text
+    fields :list = []
+    fields.append({'type': 'mrkdwn', 'text': f'*Action:*\n{action}'})
+    fields.append({'type': 'mrkdwn', 'text': f'*When:*\n{created}'})
+    fields.append({'type': 'mrkdwn', 'text': f'*ID:*\n{pk}'})
+    fields.append({'type': 'mrkdwn', 'text': f'*Username:*\n{username}'})
+    if message:
+        fields.append({'type': 'mrkdwn', 'text': f'*Message:*\n{message}'})
+    if label:
+        fields.append({'type': 'mrkdwn', 'text': f'*Label:*\n{label}'})
+    if resource_type:
+        fields.append({'type': 'mrkdwn', 'text': f'*Type:*\n{resource_type}'.strip()})
+        if resource_type == 'linode':
+            button_url = f'https://cloud.linode.com/linodes/{resource_id}'
+            button_text = 'View Linode'
+        if resource_type == 'user_ssh_key':
+            button_url = 'https://cloud.linode.com/profile/keys'
+            button_text = 'View SSH Keys'
+        if resource_type == 'token':
+            button_url = 'https://cloud.linode.com/profile/tokens'
+            button_text = 'View API Tokens'
+        if resource_type == 'stackscript':
+            button_url = f'https://cloud.linode.com/stackscripts/{resource_id}'
+            button_text = 'View StackScript'
+
+    post_to_slack(fields, header, button_text, button_url)
 
 def main():
     conn = get_connection()
@@ -140,7 +184,7 @@ def main():
             cursor.execute(f"INSERT INTO {TABLENAME} VALUES (?,?,?,?,?,?,?,?)", linode_event_to_row(result))
             conn.commit()
         else:
-            post_to_slack(linode_event_to_table(result))
+            parse_linode_event(result)
             break
 
     conn.close()
