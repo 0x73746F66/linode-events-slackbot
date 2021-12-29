@@ -1,7 +1,7 @@
 FROM docker.io/library/alpine:3.8
 LABEL org.opencontainers.image.authors="Christopher Langton"
 LABEL org.opencontainers.image.version="1.0.0"
-LABEL org.opencontainers.image.source="https://gitlab.com/chrislangton/linode-events-slackbot"
+LABEL org.opencontainers.image.source="https://gitlab.com/trivialsec/linode-events-slackbot"
 
 ENV PYTHONUNBUFFERED 1
 ENV PYTHONPATH /srv/app
